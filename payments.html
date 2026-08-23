@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payments — Admin</title><meta name="robots" content="noindex, nofollow" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/admin.css" />
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="topbar"><span class="topbar__title">Payments</span></header>
+    <main class="page-body">
+      <div class="card">
+        <div class="card__header">
+          <span class="card__title">All Payments</span>
+          <select class="form-control" id="status-filter" style="width:140px;">
+            <option value="">All</option>
+            <option value="SUCCESS">Success</option>
+            <option value="PENDING">Pending</option>
+            <option value="FAILED">Failed</option>
+            <option value="REFUNDED">Refunded</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Client</th><th>Email</th><th>Amount</th><th>Status</th><th>Order ID</th><th>Payment ID</th><th>Date</th></tr></thead>
+            <tbody id="pay-body"><tr><td colspan="7" class="loading"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<script type="module">
+import { guardAdmin } from "./js/core/auth.js";
+import { renderSidebar } from "./js/components/sidebar.js";
+import { api } from "./js/core/api.js";
+
+await guardAdmin();
+renderSidebar("payments");
+
+const tbody = document.getElementById("pay-body");
+const filter = document.getElementById("status-filter");
+function fmtDate(d) { try { return new Date(d).toLocaleDateString("en-IN"); } catch { return "—"; } }
+function badge(s) { const m={SUCCESS:"green",FAILED:"red",PENDING:"yellow",REFUNDED:"blue"}; return `badge--${m[s]||"dim"}`; }
+
+async function load(status = "") {
+  tbody.innerHTML = `<tr><td colspan="7" class="loading"><div class="spinner"></div></td></tr>`;
+  try {
+    const resp = await api.get("/admin/payments", { status: status || undefined });
+    const rows = resp.data || [];
+    if (!rows.length) { tbody.innerHTML = `<tr><td colspan="7" class="empty">No payments</td></tr>`; return; }
+    tbody.innerHTML = rows.map(p => `
+      <tr>
+        <td>${p.client_name || "—"}</td>
+        <td class="text-muted" style="font-size:12px;">${p.client_email || p.client_id || "—"}</td>
+        <td><strong>₹${(p.amount||0).toLocaleString("en-IN")}</strong></td>
+        <td><span class="badge ${badge(p.status)}">${p.status}</span></td>
+        <td class="text-muted" style="font-size:11px;font-family:monospace;">${p.order_reference || "—"}</td>
+        <td class="text-muted" style="font-size:11px;font-family:monospace;">${p.provider_reference || "—"}</td>
+        <td class="text-muted">${fmtDate(p.created_at)}</td>
+      </tr>`).join("");
+  } catch(e) { tbody.innerHTML = `<tr><td colspan="7" class="empty">Error: ${e.message}</td></tr>`; }
+}
+
+filter.addEventListener("change", () => load(filter.value));
+load();
+</script>
+</body>
+</html>

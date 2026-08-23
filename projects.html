@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Projects — Admin</title><meta name="robots" content="noindex, nofollow" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/admin.css" />
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="topbar"><span class="topbar__title">Client Projects</span></header>
+    <main class="page-body">
+      <div class="card">
+        <div class="card__header">
+          <span class="card__title">Active Client Projects</span>
+          <select class="form-control" id="status-filter" style="width:160px;">
+            <option value="">All Status</option>
+            <option value="DESIGN">Design</option>
+            <option value="DEVELOPMENT">Development</option>
+            <option value="REVIEW">Review</option>
+            <option value="COMPLETED">Completed</option>
+            <option value="ON_HOLD">On Hold</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Client</th><th>Email</th><th>Project</th><th>Service</th><th>Amount</th><th>Payment</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="proj-body"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="status-modal">
+  <div class="modal">
+    <div class="modal__header"><span class="modal__title">Update Project Status</span><button class="modal__close" id="modal-close">✕</button></div>
+    <div class="form-group"><label class="form-label">Status</label>
+      <select class="form-control" id="modal-status">
+        <option value="DESIGN">Design</option><option value="DEVELOPMENT">Development</option>
+        <option value="REVIEW">Review</option><option value="COMPLETED">Completed</option>
+        <option value="ON_HOLD">On Hold</option><option value="CANCELLED">Cancelled</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Progress %</label><input class="form-control" id="modal-progress" type="number" min="0" max="100" /></div>
+    <div class="flex gap-sm mt-4">
+      <button class="btn btn--primary" id="modal-save">Update</button>
+      <button class="btn btn--secondary" id="modal-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { guardAdmin } from "./js/core/auth.js";
+import { renderSidebar } from "./js/components/sidebar.js";
+import { api } from "./js/core/api.js";
+import { toastSuccess, toastError } from "./js/components/toast.js";
+
+await guardAdmin();
+renderSidebar("projects");
+
+const tbody = document.getElementById("proj-body");
+const filter = document.getElementById("status-filter");
+const modal = document.getElementById("status-modal");
+let currentProjId = null;
+
+function badge(s) { const m={COMPLETED:"green",DEVELOPMENT:"blue",DESIGN:"blue",REVIEW:"yellow",ON_HOLD:"yellow",CANCELLED:"red"}; return `badge--${m[s]||"dim"}`; }
+function payBadge(s) { const m={SUCCESS:"green",PENDING:"yellow",FAILED:"red"}; return `badge--${m[s]||"dim"}`; }
+
+async function load(status="") {
+  tbody.innerHTML = `<tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr>`;
+  try {
+    const resp = await api.get("/admin/projects/client", { status: status||undefined, limit: 50 });
+    const rows = resp.data||[];
+    if (!rows.length) { tbody.innerHTML=`<tr><td colspan="8" class="empty">No projects</td></tr>`; return; }
+    tbody.innerHTML = rows.map(p=>`
+      <tr>
+        <td>${p.client_name||"—"}</td>
+        <td class="text-muted" style="font-size:12px;">${p.client_email||"—"}</td>
+        <td>${p.title||"—"}</td>
+        <td>${p.service_type||"—"}</td>
+        <td>₹${(p.amount||0).toLocaleString("en-IN")}</td>
+        <td><span class="badge ${payBadge(p.latest_payment_status)}">${p.latest_payment_status||"NONE"}</span></td>
+        <td><span class="badge ${badge(p.status)}">${p.status}</span></td>
+        <td><button class="btn btn--sm btn--secondary" onclick="openModal('${p._id}','${p.status}',${p.progress||0})">Update</button></td>
+      </tr>`).join("");
+  } catch(e) { tbody.innerHTML=`<tr><td colspan="8" class="empty">Error: ${e.message}</td></tr>`; }
+}
+
+window.openModal=(id,status,progress)=>{
+  currentProjId=id;
+  document.getElementById("modal-status").value=status;
+  document.getElementById("modal-progress").value=progress;
+  modal.classList.remove("hidden");
+};
+document.getElementById("modal-close").onclick=()=>modal.classList.add("hidden");
+document.getElementById("modal-cancel").onclick=()=>modal.classList.add("hidden");
+document.getElementById("modal-save").onclick=async()=>{
+  const status=document.getElementById("modal-status").value;
+  const progress=parseInt(document.getElementById("modal-progress").value)||null;
+  try {
+    await api.patch(`/admin/projects/client/${currentProjId}/status?status=${status}${progress!==null?`&progress=${progress}`:""}`);
+    toastSuccess("Status updated");
+    modal.classList.add("hidden");
+    load(filter.value);
+  } catch(e){toastError(e.message);}
+};
+
+filter.addEventListener("change",()=>load(filter.value));
+load();
+</script>
+</body>
+</html>

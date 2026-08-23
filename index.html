@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard — Nitesh Studio</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23171717'/%3E%3Ctext x='50' y='68' font-size='58' font-family='Arial' font-weight='800' fill='%23E8752E' text-anchor='middle'%3EN%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/admin.css" />
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="topbar">
+      <span class="topbar__title">Dashboard</span>
+      <span id="topbar-date" class="text-muted" style="font-size:12px;"></span>
+    </header>
+    <main class="page-body" id="page-body">
+      <div class="loading"><div class="spinner"></div></div>
+    </main>
+  </div>
+</div>
+
+<script type="module">
+import { guardAdmin } from "./js/core/auth.js";
+import { renderSidebar } from "./js/components/sidebar.js";
+import { api } from "./js/core/api.js";
+
+document.getElementById("topbar-date").textContent = new Date().toLocaleDateString("en-IN", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+
+const user = await guardAdmin();
+if (!user) throw new Error("redirecting");
+
+renderSidebar("dashboard");
+
+const body = document.getElementById("page-body");
+
+async function loadDashboard() {
+  try {
+    const resp = await api.get("/admin/dashboard");
+    const d = resp.data;
+    body.innerHTML = `
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-card__label">Total Clients</div>
+          <div class="stat-card__value">${d.total_users ?? 0}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__label">New Requests</div>
+          <div class="stat-card__value">${d.new_requests ?? 0}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__label">Active Projects</div>
+          <div class="stat-card__value">${d.active_projects ?? 0}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__label">Completed</div>
+          <div class="stat-card__value">${d.completed_projects ?? 0}</div>
+        </div>
+        <div class="stat-card stat-card--accent">
+          <div class="stat-card__label">Revenue (INR)</div>
+          <div class="stat-card__value">₹${(d.revenue_inr ?? 0).toLocaleString("en-IN")}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__label">Pending Payments</div>
+          <div class="stat-card__value">${d.pending_payments ?? 0}</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div class="card">
+          <div class="card__header"><span class="card__title">Recent Requests</span><a href="requests.html" style="font-size:12px;color:var(--text-muted)">View all →</a></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Client</th><th>Service</th><th>Status</th><th>Date</th></tr></thead>
+              <tbody>
+                ${(d.recent_requests || []).map(r => `
+                  <tr>
+                    <td>${r.client_name || r.client_id || "—"}</td>
+                    <td>${r.service_type || "—"}</td>
+                    <td><span class="badge ${statusBadge(r.status)}">${r.status}</span></td>
+                    <td class="text-muted">${fmtDate(r.created_at)}</td>
+                  </tr>`).join("") || `<tr><td colspan="4" class="empty">No requests</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card__header"><span class="card__title">Recent Payments</span><a href="payments.html" style="font-size:12px;color:var(--text-muted)">View all →</a></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Client</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+              <tbody>
+                ${(d.recent_payments || []).map(p => `
+                  <tr>
+                    <td>${p.client_email || p.client_id || "—"}</td>
+                    <td>₹${(p.amount || 0).toLocaleString("en-IN")}</td>
+                    <td><span class="badge ${statusBadge(p.status)}">${p.status}</span></td>
+                    <td class="text-muted">${fmtDate(p.created_at)}</td>
+                  </tr>`).join("") || `<tr><td colspan="4" class="empty">No payments</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    body.innerHTML = `<div class="empty">Failed to load dashboard: ${err.message}</div>`;
+  }
+}
+
+function statusBadge(s) {
+  const m = { SUCCESS:"green", COMPLETED:"green", NEW:"blue", ACTIVE:"blue", DEVELOPMENT:"blue", FAILED:"red", CANCELLED:"red", PENDING:"yellow", REVIEW:"yellow" };
+  return `badge--${m[s] || "dim"}`;
+}
+function fmtDate(d) {
+  if (!d) return "—";
+  try { return new Date(d).toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" }); }
+  catch { return "—"; }
+}
+
+loadDashboard();
+</script>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Certifications — Admin</title><meta name="robots" content="noindex, nofollow" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/admin.css" />
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="topbar"><span class="topbar__title">Certifications</span></header>
+    <main class="page-body">
+      <div class="card">
+        <div class="card__header">
+          <span class="card__title">Certifications</span>
+          <button class="btn btn--primary btn--sm" id="add-btn">+ Add Certification</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Title</th><th>Issuer</th><th>Category</th><th>Featured</th><th>Order</th><th>Actions</th></tr></thead>
+            <tbody id="cert-body"><tr><td colspan="6" class="loading"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="cert-modal">
+  <div class="modal">
+    <div class="modal__header">
+      <span class="modal__title" id="modal-title">Add Certification</span>
+      <button class="modal__close" id="modal-close">✕</button>
+    </div>
+    <input type="hidden" id="cert-id" />
+    <div class="form-group"><label class="form-label">Title *</label><input class="form-control" id="cert-title" placeholder="AWS Solutions Architect" /></div>
+    <div class="form-group"><label class="form-label">Issuer *</label><input class="form-control" id="cert-issuer" placeholder="Amazon Web Services" /></div>
+    <div class="form-group"><label class="form-label">Category</label><input class="form-control" id="cert-category" placeholder="Cloud" /></div>
+    <div class="form-group"><label class="form-label">Issue Date</label><input class="form-control" id="cert-date" type="date" /></div>
+    <div class="form-group"><label class="form-label">Credential ID</label><input class="form-control" id="cert-cid" /></div>
+    <div class="form-group"><label class="form-label">Credential URL</label><input class="form-control" id="cert-curl" type="url" /></div>
+    <div class="form-group"><label class="form-label">Image URL</label><input class="form-control" id="cert-img" type="url" /></div>
+    <div class="form-group"><label class="form-label">Display Order</label><input class="form-control" id="cert-order" type="number" value="0" /></div>
+    <div class="form-group" style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="cert-featured" />
+      <label for="cert-featured" style="font-size:13px;">Featured</label>
+    </div>
+    <div class="flex gap-sm mt-4">
+      <button class="btn btn--primary" id="save-btn">Save</button>
+      <button class="btn btn--secondary" id="cancel-btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { guardAdmin } from "./js/core/auth.js";
+import { renderSidebar } from "./js/components/sidebar.js";
+import { api } from "./js/core/api.js";
+import { toastSuccess, toastError } from "./js/components/toast.js";
+
+await guardAdmin();
+renderSidebar("certifications");
+
+const tbody = document.getElementById("cert-body");
+const modal = document.getElementById("cert-modal");
+let editId = null;
+
+const open = (cert = null) => {
+  editId = cert?._id || cert?.id || null;
+  document.getElementById("modal-title").textContent = editId ? "Edit Certification" : "Add Certification";
+  document.getElementById("cert-id").value = editId || "";
+  document.getElementById("cert-title").value = cert?.title || "";
+  document.getElementById("cert-issuer").value = cert?.issuer || "";
+  document.getElementById("cert-category").value = cert?.category || "";
+  document.getElementById("cert-date").value = cert?.issue_date || "";
+  document.getElementById("cert-cid").value = cert?.credential_id || "";
+  document.getElementById("cert-curl").value = cert?.credential_url || "";
+  document.getElementById("cert-img").value = cert?.image_url || "";
+  document.getElementById("cert-order").value = cert?.display_order ?? 0;
+  document.getElementById("cert-featured").checked = cert?.featured || false;
+  modal.classList.remove("hidden");
+};
+
+const close = () => modal.classList.add("hidden");
+document.getElementById("modal-close").onclick = close;
+document.getElementById("cancel-btn").onclick = close;
+document.getElementById("add-btn").onclick = () => open();
+
+document.getElementById("save-btn").onclick = async () => {
+  const payload = {
+    title: document.getElementById("cert-title").value,
+    issuer: document.getElementById("cert-issuer").value,
+    category: document.getElementById("cert-category").value,
+    issue_date: document.getElementById("cert-date").value,
+    credential_id: document.getElementById("cert-cid").value,
+    credential_url: document.getElementById("cert-curl").value,
+    image_url: document.getElementById("cert-img").value,
+    display_order: parseInt(document.getElementById("cert-order").value) || 0,
+    featured: document.getElementById("cert-featured").checked,
+  };
+  try {
+    if (editId) {
+      await api.put(`/admin/certifications/${editId}`, payload);
+      toastSuccess("Certification updated");
+    } else {
+      await api.post("/admin/certifications", payload);
+      toastSuccess("Certification added");
+    }
+    close();
+    load();
+  } catch(e) { toastError(e.message); }
+};
+
+async function load() {
+  tbody.innerHTML = `<tr><td colspan="6" class="loading"><div class="spinner"></div></td></tr>`;
+  try {
+    const resp = await api.get("/public/certifications");
+    const rows = resp.data || [];
+    if (!rows.length) { tbody.innerHTML = `<tr><td colspan="6" class="empty">No certifications</td></tr>`; return; }
+    tbody.innerHTML = rows.map(c => `
+      <tr>
+        <td><strong>${c.title}</strong></td>
+        <td>${c.issuer}</td>
+        <td>${c.category || "—"}</td>
+        <td>${c.featured ? "⭐" : "—"}</td>
+        <td>${c.display_order ?? 0}</td>
+        <td class="flex gap-sm">
+          <button class="btn btn--sm btn--secondary" onclick="editCert(${JSON.stringify(c).replace(/"/g, "&quot;")})">Edit</button>
+          <button class="btn btn--sm btn--danger" onclick="deleteCert('${c._id || c.id}')">Delete</button>
+        </td>
+      </tr>`).join("");
+  } catch(e) { tbody.innerHTML = `<tr><td colspan="6" class="empty">Error: ${e.message}</td></tr>`; }
+}
+
+window.editCert = (c) => open(c);
+window.deleteCert = async (id) => {
+  if (!confirm("Delete this certification?")) return;
+  try {
+    await api.delete(`/admin/certifications/${id}`);
+    toastSuccess("Deleted");
+    load();
+  } catch(e) { toastError(e.message); }
+};
+
+load();
+</script>
+</body>
+</html>

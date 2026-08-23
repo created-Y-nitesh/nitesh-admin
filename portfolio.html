@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portfolio — Admin</title><meta name="robots" content="noindex, nofollow" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/admin.css" />
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="topbar"><span class="topbar__title">Portfolio Projects</span></header>
+    <main class="page-body">
+      <div class="card">
+        <div class="card__header"><span class="card__title">Portfolio</span><button class="btn btn--primary btn--sm" id="add-btn">+ Add Project</button></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Title</th><th>Category</th><th>Status</th><th>Featured</th><th>Actions</th></tr></thead>
+            <tbody id="port-body"><tr><td colspan="5" class="loading"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<div class="modal-overlay hidden" id="port-modal">
+  <div class="modal">
+    <div class="modal__header"><span class="modal__title" id="modal-title">Add Portfolio Project</span><button class="modal__close" id="modal-close">✕</button></div>
+    <div class="form-group"><label class="form-label">Title *</label><input class="form-control" id="p-title" /></div>
+    <div class="form-group"><label class="form-label">Short Description</label><input class="form-control" id="p-short-desc" /></div>
+    <div class="form-group"><label class="form-label">Category</label><input class="form-control" id="p-cat" placeholder="SaaS, Bot, Website..." /></div>
+    <div class="form-group"><label class="form-label">Tech Stack (comma-separated)</label><input class="form-control" id="p-tech" placeholder="Python, FastAPI, MongoDB" /></div>
+    <div class="form-group"><label class="form-label">Image URL</label><input class="form-control" id="p-img" type="url" /></div>
+    <div class="form-group"><label class="form-label">Demo URL</label><input class="form-control" id="p-demo" type="url" /></div>
+    <div class="form-group"><label class="form-label">Status</label>
+      <select class="form-control" id="p-status"><option value="DRAFT">Draft</option><option value="PUBLISHED">Published</option></select>
+    </div>
+    <div class="form-group" style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="p-featured" /><label for="p-featured" style="font-size:13px;">Featured</label></div>
+    <div class="flex gap-sm mt-4"><button class="btn btn--primary" id="save-btn">Save</button><button class="btn btn--secondary" id="cancel-btn">Cancel</button></div>
+  </div>
+</div>
+<script type="module">
+import { guardAdmin } from "./js/core/auth.js";
+import { renderSidebar } from "./js/components/sidebar.js";
+import { api } from "./js/core/api.js";
+import { toastSuccess, toastError } from "./js/components/toast.js";
+
+await guardAdmin();
+renderSidebar("portfolio");
+
+const tbody = document.getElementById("port-body");
+const modal = document.getElementById("port-modal");
+let editId = null;
+
+function badge(s) { const m={PUBLISHED:"green",DRAFT:"dim"}; return `badge--${m[s]||"dim"}`; }
+
+const open=(p=null)=>{
+  editId=p?._id||null;
+  document.getElementById("modal-title").textContent=editId?"Edit Project":"Add Project";
+  document.getElementById("p-title").value=p?.title||"";
+  document.getElementById("p-short-desc").value=p?.short_description||"";
+  document.getElementById("p-cat").value=p?.category||"";
+  document.getElementById("p-tech").value=(p?.tech_stack||[]).join(", ");
+  document.getElementById("p-img").value=p?.image_url||"";
+  document.getElementById("p-demo").value=p?.demo_url||"";
+  document.getElementById("p-status").value=p?.status||"DRAFT";
+  document.getElementById("p-featured").checked=p?.featured||false;
+  modal.classList.remove("hidden");
+};
+
+const close=()=>modal.classList.add("hidden");
+document.getElementById("modal-close").onclick=close;
+document.getElementById("cancel-btn").onclick=close;
+document.getElementById("add-btn").onclick=()=>open();
+
+document.getElementById("save-btn").onclick=async()=>{
+  const payload={
+    title:document.getElementById("p-title").value,
+    short_description:document.getElementById("p-short-desc").value,
+    category:document.getElementById("p-cat").value,
+    tech_stack:document.getElementById("p-tech").value.split(",").map(t=>t.trim()).filter(Boolean),
+    image_url:document.getElementById("p-img").value,
+    demo_url:document.getElementById("p-demo").value,
+    status:document.getElementById("p-status").value,
+    featured:document.getElementById("p-featured").checked,
+  };
+  try {
+    if(editId) { await api.put(`/admin/projects/portfolio/${editId}`,payload); toastSuccess("Updated"); }
+    else { await api.post("/admin/projects/portfolio",payload); toastSuccess("Added"); }
+    close(); load();
+  } catch(e){toastError(e.message);}
+};
+
+async function load() {
+  tbody.innerHTML=`<tr><td colspan="5" class="loading"><div class="spinner"></div></td></tr>`;
+  try {
+    const resp=await api.get("/admin/projects/portfolio");
+    const rows=resp.data||[];
+    if(!rows.length){tbody.innerHTML=`<tr><td colspan="5" class="empty">No projects</td></tr>`;return;}
+    tbody.innerHTML=rows.map(p=>`
+      <tr>
+        <td><strong>${p.title}</strong></td>
+        <td>${p.category||"—"}</td>
+        <td><span class="badge ${badge(p.status)}">${p.status}</span></td>
+        <td>${p.featured?"⭐":"—"}</td>
+        <td class="flex gap-sm">
+          <button class="btn btn--sm btn--secondary" onclick="editP(${JSON.stringify(p).replace(/"/g,"&quot;")})">Edit</button>
+          <button class="btn btn--sm btn--danger" onclick="deleteP('${p._id}')">Delete</button>
+        </td>
+      </tr>`).join("");
+  } catch(e){tbody.innerHTML=`<tr><td colspan="5" class="empty">Error: ${e.message}</td></tr>`;}
+}
+window.editP=(p)=>open(p);
+window.deleteP=async(id)=>{
+  if(!confirm("Delete this project?"))return;
+  try{await api.delete(`/admin/projects/portfolio/${id}`);toastSuccess("Deleted");load();}
+  catch(e){toastError(e.message);}
+};
+load();
+</script>
+</body>
+</html>

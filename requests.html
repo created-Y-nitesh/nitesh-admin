@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Requests — Admin</title><meta name="robots" content="noindex, nofollow" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/admin.css" />
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="topbar"><span class="topbar__title">Project Requests</span></header>
+    <main class="page-body">
+      <div class="card">
+        <div class="card__header">
+          <span class="card__title">All Requests</span>
+          <div class="flex gap-sm">
+            <select class="form-control" id="status-filter" style="width:140px;">
+              <option value="">All Status</option>
+              <option value="NEW">New</option>
+              <option value="REVIEWING">Reviewing</option>
+              <option value="APPROVED">Approved</option>
+              <option value="REJECTED">Rejected</option>
+              <option value="CONVERTED">Converted</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Client</th><th>Email</th><th>Project</th><th>Service</th><th>Budget</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+            <tbody id="requests-body"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Status Modal -->
+<div class="modal-overlay hidden" id="status-modal">
+  <div class="modal">
+    <div class="modal__header">
+      <span class="modal__title">Update Status</span>
+      <button class="modal__close" id="modal-close">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Request ID</label>
+      <input class="form-control" id="modal-req-id" readonly />
+    </div>
+    <div class="form-group">
+      <label class="form-label">New Status</label>
+      <select class="form-control" id="modal-status">
+        <option value="NEW">New</option>
+        <option value="REVIEWING">Reviewing</option>
+        <option value="APPROVED">Approved</option>
+        <option value="REJECTED">Rejected</option>
+        <option value="CONVERTED">Converted to Project</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Admin Note (optional)</label>
+      <input class="form-control" id="modal-note" placeholder="Internal note..." />
+    </div>
+    <div class="flex gap-sm mt-4">
+      <button class="btn btn--primary" id="modal-save">Update</button>
+      <button class="btn btn--secondary" id="modal-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { guardAdmin } from "./js/core/auth.js";
+import { renderSidebar } from "./js/components/sidebar.js";
+import { api } from "./js/core/api.js";
+import { toastSuccess, toastError } from "./js/components/toast.js";
+
+await guardAdmin();
+renderSidebar("requests");
+
+const tbody = document.getElementById("requests-body");
+const filter = document.getElementById("status-filter");
+const modal = document.getElementById("status-modal");
+let currentReqId = null;
+
+function fmtDate(d) { try { return new Date(d).toLocaleDateString("en-IN", { day:"2-digit", month:"short" }); } catch { return "—"; } }
+function badge(s) { const m={SUCCESS:"green",COMPLETED:"green",NEW:"blue",APPROVED:"green",REVIEWING:"yellow",REJECTED:"red",CONVERTED:"blue"}; return `badge--${m[s]||"dim"}`; }
+
+async function load(status = "") {
+  tbody.innerHTML = `<tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr>`;
+  try {
+    const resp = await api.get("/admin/requests", { status: status || undefined, limit: 50 });
+    const rows = resp.data || [];
+    if (!rows.length) { tbody.innerHTML = `<tr><td colspan="8" class="empty">No requests found</td></tr>`; return; }
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td>${r.client_name || "—"}</td>
+        <td class="text-muted" style="font-size:12px;">${r.client_email || "—"}</td>
+        <td>${r.project_title || r.service_type || "—"}</td>
+        <td>${r.service_type || "—"}</td>
+        <td>${r.budget_range || "—"}</td>
+        <td><span class="badge ${badge(r.status)}">${r.status}</span></td>
+        <td class="text-muted">${fmtDate(r.created_at)}</td>
+        <td><button class="btn btn--sm btn--secondary" onclick="openModal('${r._id}','${r.status}')">Update</button></td>
+      </tr>`).join("");
+  } catch(e) { tbody.innerHTML = `<tr><td colspan="8" class="empty">Error: ${e.message}</td></tr>`; }
+}
+
+window.openModal = (id, status) => {
+  currentReqId = id;
+  document.getElementById("modal-req-id").value = id;
+  document.getElementById("modal-status").value = status;
+  document.getElementById("modal-note").value = "";
+  modal.classList.remove("hidden");
+};
+
+document.getElementById("modal-close").onclick = () => modal.classList.add("hidden");
+document.getElementById("modal-cancel").onclick = () => modal.classList.add("hidden");
+
+document.getElementById("modal-save").onclick = async () => {
+  const status = document.getElementById("modal-status").value;
+  const note = document.getElementById("modal-note").value;
+  try {
+    await api.patch(`/admin/requests/${currentReqId}/status?status=${status}${note ? `&note=${encodeURIComponent(note)}` : ""}`);
+    toastSuccess("Status updated");
+    modal.classList.add("hidden");
+    load(filter.value);
+  } catch(e) { toastError(e.message); }
+};
+
+filter.addEventListener("change", () => load(filter.value));
+load();
+</script>
+</body>
+</html>
